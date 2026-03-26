@@ -1,21 +1,180 @@
 # XiaoZhi ESP32 — Developer Documentation
 
-A practical guide covering configuration, dependencies, building, flashing, updating, and adding new features.
+A practical guide covering local development setup, configuration, dependencies, building, flashing, updating, and adding new features.
 
 ---
 
 ## Table of Contents
 
-1. [Configuration Guide](#1-configuration-guide)
-2. [Dependency Services](#2-dependency-services)
-3. [Custom Builds](#3-custom-builds)
-4. [Flashing to a Board](#4-flashing-to-a-board)
-5. [Updating Firmware](#5-updating-firmware)
-6. [Adding New Features](#6-adding-new-features)
+1. [Local Development Setup](#1-local-development-setup)
+2. [Configuration Guide](#2-configuration-guide)
+3. [Dependency Services](#3-dependency-services)
+4. [Custom Builds](#4-custom-builds)
+5. [Flashing to a Board](#5-flashing-to-a-board)
+6. [Updating Firmware](#6-updating-firmware)
+7. [Adding New Features](#7-adding-new-features)
 
 ---
 
-## 1. Configuration Guide
+## 1. Local Development Setup
+
+### Option A — Native ESP-IDF Installation (Recommended for Active Development)
+
+This gives you the fastest build iterations and full IDE integration.
+
+#### 1.1 Install ESP-IDF v5.5.2
+
+```bash
+# Install prerequisites (Ubuntu/Debian)
+sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv \
+     cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+
+# Clone ESP-IDF
+git clone --recursive https://github.com/espressif/esp-idf.git ~/esp/esp-idf
+cd ~/esp/esp-idf
+git checkout v5.5.2
+git submodule update --init --recursive
+
+# Run the installer (installs toolchain, Python venv, etc.)
+./install.sh all
+
+# Add to shell (add this line to ~/.bashrc or ~/.zshrc)
+alias get_idf='. ~/esp/esp-idf/export.sh'
+```
+
+On macOS, replace the apt-get step with:
+```bash
+brew install cmake ninja dfu-util python3
+```
+
+On Windows, use the [ESP-IDF Windows Installer](https://dl.espressif.com/dl/esp-idf/).
+
+#### 1.2 Clone the Repository
+
+```bash
+git clone https://github.com/astronaut1712/xiaozhi-esp32.git
+cd xiaozhi-esp32
+```
+
+#### 1.3 Activate the Environment and Build
+
+```bash
+get_idf   # or: source ~/esp/esp-idf/export.sh
+
+# Install Python dependencies for the build scripts
+pip install -r scripts/requirements.txt 2>/dev/null || true
+
+# Build your target board
+python scripts/release.py bread-compact-wifi
+```
+
+#### 1.4 IDE Setup — VS Code
+
+Install the **ESP-IDF VS Code Extension** (Espressif IDF):
+
+1. Open the repository folder in VS Code
+2. Press `Ctrl+Shift+P` → `ESP-IDF: Configure ESP-IDF Extension`
+3. Select `USE EXISTING SETUP` and point it at your `~/esp/esp-idf` path
+4. The extension provides IntelliSense, build, flash, and monitor commands
+
+Useful extension commands (`Ctrl+Shift+P`):
+- `ESP-IDF: Build your project`
+- `ESP-IDF: Flash your project`
+- `ESP-IDF: Monitor your device`
+- `ESP-IDF: Set Espressif device target` — switch between ESP32 / ESP32-S3 / etc.
+
+For code completion to work correctly, the extension generates a `compile_commands.json` after the first build. You may also create `.vscode/c_cpp_properties.json` pointing at the IDF include paths.
+
+#### 1.5 IDE Setup — CLion
+
+1. Open the project folder
+2. CLion will detect `CMakeLists.txt` automatically
+3. Go to `Settings → Build, Execution, Deployment → CMake`
+4. Set the CMake options to include the IDF toolchain file:
+   ```
+   -DCMAKE_TOOLCHAIN_FILE=$IDF_PATH/tools/cmake/toolchain-esp32s3.cmake
+   ```
+5. Set `clang-format` in `Settings → Editor → Code Style → C/C++` → `Formatter: clang-format`
+
+---
+
+### Option B — Docker (Recommended for CI Parity / Clean Builds)
+
+No local toolchain installation required. Matches exactly what CI runs.
+
+```bash
+# Pull the exact same image used in CI
+docker pull espressif/idf:v5.5.2
+
+# Run an interactive build shell
+docker run --rm -it \
+  -v $(pwd):/project \
+  -w /project \
+  espressif/idf:v5.5.2 \
+  bash
+
+# Inside the container:
+source $IDF_PATH/export.sh
+python scripts/release.py bread-compact-wifi
+```
+
+To also flash from Docker, pass the serial device:
+```bash
+docker run --rm -it \
+  -v $(pwd):/project \
+  -w /project \
+  --device /dev/ttyUSB0 \
+  espressif/idf:v5.5.2 \
+  bash
+```
+
+---
+
+### Verifying the Setup
+
+After a successful build you should see:
+```
+build/merged-binary.bin   ← the file to flash
+```
+
+Run this to confirm the environment is working:
+```bash
+python scripts/release.py --list-boards --json
+```
+
+This lists all 95+ supported boards as JSON. If it prints a list, the setup is complete.
+
+---
+
+### Serial Port Permissions (Linux)
+
+On Linux, you may get `Permission denied` when accessing the serial port. Fix:
+```bash
+sudo usermod -aG dialout $USER
+# Log out and back in for the change to take effect
+```
+
+---
+
+### Useful Development Commands
+
+```bash
+# Format all C++ source files (required before committing)
+find main -iname "*.h" -o -iname "*.cc" | xargs clang-format -i
+
+# Watch serial output
+idf.py -p /dev/ttyUSB0 monitor
+
+# Build + flash + monitor in one command
+idf.py -p /dev/ttyUSB0 build flash monitor
+
+# Debug audio issues (streams mic audio to PC over WiFi)
+python scripts/audio_debug_server.py
+```
+
+---
+
+## 2. Configuration Guide
 
 ### How Configuration Works
 
@@ -78,7 +237,7 @@ Available tables: `partitions/v2/8m.csv`, `16m.csv`, `16m_c3.csv`, `32m.csv`.
 
 ---
 
-## 2. Dependency Services
+## 3. Dependency Services
 
 The firmware itself is self-contained, but it connects to external services at runtime.
 
@@ -125,7 +284,7 @@ Custom wake word models, fonts, sounds, and emoji packs are served from a CDN/HT
 
 ---
 
-## 3. Custom Builds
+## 4. Custom Builds
 
 ### Prerequisites
 
@@ -215,7 +374,7 @@ Then register in `main/Kconfig.projbuild` and `main/CMakeLists.txt`.
 
 ---
 
-## 4. Flashing to a Board
+## 5. Flashing to a Board
 
 ### First-Time Flash (Full)
 
@@ -265,7 +424,7 @@ Use `Ctrl+]` to exit the monitor.
 
 ---
 
-## 5. Updating Firmware
+## 6. Updating Firmware
 
 ### Via OTA (Recommended)
 
@@ -310,7 +469,7 @@ Assets (wake word models, fonts, sounds) are updated independently from firmware
 
 ---
 
-## 6. Adding New Features
+## 7. Adding New Features
 
 This section walks through adding a concrete new feature: **connecting to a Bluetooth speaker for audio output**.
 
