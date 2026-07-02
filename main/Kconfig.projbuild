@@ -785,6 +785,16 @@ config USE_AUDIO_DEBUGGER
     help
         Enable audio debugger, send audio data through UDP to the host machine
 
+config USE_BT_SPEAKER
+    bool "Enable Bluetooth Speaker Output (A2DP Source)"
+    default n
+    depends on IDF_TARGET_ESP32 && BT_A2DP_ENABLE
+    help
+        Route audio output to a Bluetooth speaker using Classic Bluetooth A2DP.
+        Only available on the original ESP32 (BR/EDR); requires
+        CONFIG_BT_ENABLED, CONFIG_BT_CLASSIC_ENABLED and CONFIG_BT_A2DP_ENABLE.
+        Not compatible with BluFi WiFi provisioning (BLE memory is released).
+
 menu "WiFi Configuration Method"
     help
         WiFi Configuration Method Selection

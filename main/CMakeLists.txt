@@ -778,6 +778,13 @@ endif()
 if (CONFIG_USE_ESP_BLUFI_WIFI_PROVISIONING)
     list(APPEND SOURCES "boards/common/blufi.cpp")
 endif ()
+
+if (CONFIG_USE_BT_SPEAKER)
+    list(APPEND SOURCES
+        "audio/codecs/bt_audio_codec.cc"
+        "boards/common/bt_speaker_mcp_tool.cc"
+    )
+endif ()
 # Select language directory according to Kconfig
 if(CONFIG_LANGUAGE_ZH_CN)
     set(LANG_DIR "zh-CN")

@@ -42,12 +42,19 @@ git submodule update --init --recursive
 alias get_idf='. ~/esp/esp-idf/export.sh'
 ```
 
-On macOS, replace the apt-get step with:
+**macOS prerequisites:**
 ```bash
-brew install cmake ninja dfu-util python3
+# Install Homebrew first if not present: https://brew.sh
+brew install cmake ninja dfu-util python3 wget
+
+# Install CP2102/CH340 USB-serial drivers if your board uses them
+# CP210x: https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers
+# CH340:  https://github.com/WCHSoftGroup/ch34xser_macos
 ```
 
-On Windows, use the [ESP-IDF Windows Installer](https://dl.espressif.com/dl/esp-idf/).
+> **macOS tip:** Apple Silicon (M1/M2/M3) Macs work fine. The ESP-IDF installer handles the correct architecture automatically.
+
+**Windows:** use the [ESP-IDF Windows Installer](https://dl.espressif.com/dl/esp-idf/).
 
 #### 1.2 Clone the Repository
 
@@ -207,7 +214,7 @@ To change any of these at build time, either:
     "builds": [
       {
         "name": "my-board",
-        "sdkconfig": [
+        "sdkconfig_append": [
           "CONFIG_OTA_URL=\"https://my-server.com/ota/\"",
           "CONFIG_LANGUAGE_EN_US=y"
         ]
@@ -227,7 +234,7 @@ If you self-host, point `CONFIG_OTA_URL` at your own server. The API contract is
 
 **Partition scheme.** The default is V2 with a 16 MB flash assumption. If your board has 8 MB flash, set the correct partition table in the board's `config.json`:
 ```json
-"sdkconfig": ["CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/v2/8m.csv\""]
+"sdkconfig_append": ["CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/v2/8m.csv\""]
 ```
 Available tables: `partitions/v2/8m.csv`, `16m.csv`, `16m_c3.csv`, `32m.csv`.
 
@@ -315,17 +322,17 @@ python scripts/release.py bread-compact-wifi --name my-custom-build
 **Change language:**
 ```json
 // in boards/your-board/config.json
-"sdkconfig": ["CONFIG_LANGUAGE_EN_US=y"]
+"sdkconfig_append": ["CONFIG_LANGUAGE_EN_US=y"]
 ```
 
 **Change OTA server URL:**
 ```json
-"sdkconfig": ["CONFIG_OTA_URL=\"https://your-server.com/ota/\""]
+"sdkconfig_append": ["CONFIG_OTA_URL=\"https://your-server.com/ota/\""]
 ```
 
 **Use a custom asset bundle:**
 ```json
-"sdkconfig": [
+"sdkconfig_append": [
   "CONFIG_FLASH_CUSTOM_ASSETS=y",
   "CONFIG_CUSTOM_ASSETS_FILE=\"https://your-cdn.com/assets.bin\""
 ]
@@ -475,73 +482,90 @@ This section walks through adding a concrete new feature: **connecting to a Blue
 
 ### Example: Bluetooth Speaker Output
 
-#### Step 1 — Understand the audio output interface
+> **Important:** Classic Bluetooth A2DP (required for speaker audio) is only available on the **original ESP32**. ESP32-S3, C3, C6, and P4 are BLE-only and cannot stream audio over A2DP. Check your chip before proceeding.
 
-Audio output goes through `AudioCodec`. The base class is in `main/audio/audio_codec.h`. The `AudioOutputTask` calls `OutputData()` to write PCM samples to whatever codec is active.
+This feature is already implemented in the codebase:
+- `main/audio/codecs/bt_audio_codec.{h,cc}` — `BtAudioCodec` class
+- `main/boards/common/bt_speaker_mcp_tool.{h,cc}` — MCP tools for AI control
 
-To route audio to Bluetooth instead of (or in addition to) the I2S speaker, you need a custom `AudioCodec` subclass that forwards PCM to a BT A2DP sink.
+#### Step 1 — Enable Bluetooth in your board's config.json
 
-#### Step 2 — Enable Bluetooth in sdkconfig
+The feature is gated by the project option `CONFIG_USE_BT_SPEAKER` (menuconfig → Xiaozhi Assistant). `scripts/release.py` auto-adds the required Classic BT stack options (`CONFIG_BT_ENABLED`, `CONFIG_BT_CLASSIC_ENABLED`, `CONFIG_BT_A2DP_ENABLE`, ...) when it sees this flag, so the board variant only needs:
 
-Add to your board's `config.json`:
 ```json
-"sdkconfig": [
-  "CONFIG_BT_ENABLED=y",
-  "CONFIG_BTDM_CTRL_MODE_BLE_ONLY=n",
-  "CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=y",
-  "CONFIG_BT_CLASSIC_ENABLED=y",
-  "CONFIG_BT_A2DP_ENABLE=y",
-  "CONFIG_BT_SPP_ENABLED=n"
-]
-```
-
-#### Step 3 — Create the codec class
-
-Create `main/audio/codecs/bt_a2dp_audio_codec.h` and `bt_a2dp_audio_codec.cc`:
-
-```cpp
-#include "audio_codec.h"
-#include <esp_a2dp_api.h>
-#include <esp_bt.h>
-#include <esp_bt_main.h>
-
-class BtA2dpAudioCodec : public AudioCodec {
-public:
-    BtA2dpAudioCodec();
-    ~BtA2dpAudioCodec();
-
-    void OutputData(std::vector<int16_t>& data) override;
-    // ... implement required virtual methods
-};
-```
-
-In the `.cc`, initialize the BT stack and A2DP sink on construction, and in `OutputData()` forward the PCM buffer to the A2DP sink callback.
-
-#### Step 4 — Use the codec in your board
-
-In your `*_board.cc`:
-```cpp
-#include "codecs/bt_a2dp_audio_codec.h"
-
-AudioCodec* MyBoard::GetAudioCodec() override {
-    if (audio_codec_ == nullptr) {
-        audio_codec_ = new BtA2dpAudioCodec();
+{
+  "target": "esp32",
+  "builds": [
+    {
+      "name": "my-board-bt",
+      "sdkconfig_append": [
+        "CONFIG_USE_BT_SPEAKER=y"
+      ]
     }
-    return audio_codec_;
+  ]
 }
 ```
 
-#### Step 5 — (Optional) Add an MCP tool to control pairing
+A reference variant exists: `bread-compact-esp32-bt` in `main/boards/bread-compact-esp32/config.json` (also serves as CI compile coverage for the feature).
 
-In `main/mcp_server.cc`:
+> **Note:** `CONFIG_USE_BT_SPEAKER` releases BLE controller memory, so it cannot be combined with BluFi WiFi provisioning (`CONFIG_USE_ESP_BLUFI_WIFI_PROVISIONING`).
+
+#### Step 2 — Use BtAudioCodec in your board
+
+In `*_board.cc`, replace the existing codec with `BtAudioCodec`. The codec handles I2S microphone input and BT A2DP speaker output together:
+
 ```cpp
-mcp_server_.AddTool("bluetooth.start_pairing",
-    "Put the Bluetooth speaker into pairing mode",
-    {},
-    [this](const cJSON* params) -> McpServer::ToolResult {
-        // call your BT codec to start scanning/pairing
-        return {true, "Pairing started"};
-    });
+#include "codecs/bt_audio_codec.h"
+#include "boards/common/bt_speaker_mcp_tool.h"
+
+class MyBoard : public WifiBoard {
+    BtAudioCodec* bt_codec_ = nullptr;
+    BtSpeakerMcpTool* bt_mcp_tool_ = nullptr;
+
+public:
+    MyBoard() {
+        // I2S mic pins from your config.h
+        bt_codec_ = new BtAudioCodec(
+            AUDIO_INPUT_SAMPLE_RATE,
+            AUDIO_I2S_GPIO_BCLK,
+            AUDIO_I2S_GPIO_WS,
+            AUDIO_I2S_GPIO_DIN
+        );
+
+        // Register MCP tools so the AI can control the BT speaker
+        bt_mcp_tool_ = new BtSpeakerMcpTool(bt_codec_);
+        bt_mcp_tool_->Initialize();
+    }
+
+    AudioCodec* GetAudioCodec() override {
+        return bt_codec_;
+    }
+};
+```
+
+#### Step 3 — Use via AI chat
+
+Once flashed, the AI assistant can control the Bluetooth speaker through voice:
+
+| What you say | MCP tool called |
+|---|---|
+| "Scan for Bluetooth speakers" | `self.bluetooth.scan` |
+| "Show me what Bluetooth devices are nearby" | `self.bluetooth.list` |
+| "Connect to the JBL speaker at ab:cd:ef:01:23:45" | `self.bluetooth.connect` |
+| "Disconnect the Bluetooth speaker" | `self.bluetooth.disconnect` |
+
+#### How it works internally
+
+The codec reports `output_sample_rate() = 44100`, so `AudioService`'s existing rate converter delivers PCM already at the A2DP sample rate — the codec itself does no resampling. On connection, the codec issues `esp_a2d_media_ctrl(CHECK_SRC_RDY → START)` to begin streaming; when `AudioService` powers the output down after inactivity, `EnableOutput(false)` suspends the media stream so the radio stops transmitting.
+
+```
+AudioOutputTask
+  └── AudioCodec::OutputData(44.1 kHz mono PCM, resampled by AudioService)
+        └── BtAudioCodec::Write()
+              ├── Apply volume, convert mono → stereo
+              └── Push to FreeRTOS ring buffer (32 KB)
+                    └── A2DP data callback (BT stack task)
+                          └── Drain ring buffer → send to BT speaker
 ```
 
 ### General Pattern for Any New Feature
