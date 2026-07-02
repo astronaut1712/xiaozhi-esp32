@@ -490,6 +490,8 @@ This feature is already implemented in the codebase:
 
 #### Step 1 — Enable Bluetooth in your board's config.json
 
+The feature is gated by the project option `CONFIG_USE_BT_SPEAKER` (menuconfig → Xiaozhi Assistant), which requires the Classic BT stack options:
+
 ```json
 {
   "target": "esp32",
@@ -501,12 +503,15 @@ This feature is already implemented in the codebase:
         "CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=y",
         "CONFIG_BT_CLASSIC_ENABLED=y",
         "CONFIG_BT_A2DP_ENABLE=y",
-        "CONFIG_BT_SPP_ENABLED=n"
+        "CONFIG_BT_SPP_ENABLED=n",
+        "CONFIG_USE_BT_SPEAKER=y"
       ]
     }
   ]
 }
 ```
+
+> **Note:** `CONFIG_USE_BT_SPEAKER` releases BLE controller memory, so it cannot be combined with BluFi WiFi provisioning (`CONFIG_USE_ESP_BLUFI_WIFI_PROVISIONING`).
 
 #### Step 2 — Use BtAudioCodec in your board
 
@@ -547,20 +552,21 @@ Once flashed, the AI assistant can control the Bluetooth speaker through voice:
 
 | What you say | MCP tool called |
 |---|---|
-| "Scan for Bluetooth speakers" | `bluetooth.scan` |
-| "Show me what Bluetooth devices are nearby" | `bluetooth.list` |
-| "Connect to the JBL speaker at ab:cd:ef:01:23:45" | `bluetooth.connect` |
-| "Disconnect the Bluetooth speaker" | `bluetooth.disconnect` |
+| "Scan for Bluetooth speakers" | `self.bluetooth.scan` |
+| "Show me what Bluetooth devices are nearby" | `self.bluetooth.list` |
+| "Connect to the JBL speaker at ab:cd:ef:01:23:45" | `self.bluetooth.connect` |
+| "Disconnect the Bluetooth speaker" | `self.bluetooth.disconnect` |
 
 #### How it works internally
 
+The codec reports `output_sample_rate() = 44100`, so `AudioService`'s existing rate converter delivers PCM already at the A2DP sample rate — the codec itself does no resampling. On connection, the codec issues `esp_a2d_media_ctrl(CHECK_SRC_RDY → START)` to begin streaming; when `AudioService` powers the output down after inactivity, `EnableOutput(false)` suspends the media stream so the radio stops transmitting.
+
 ```
 AudioOutputTask
-  └── AudioCodec::OutputData(48 kHz mono PCM)
+  └── AudioCodec::OutputData(44.1 kHz mono PCM, resampled by AudioService)
         └── BtAudioCodec::Write()
-              ├── Resample: 48000 → 44100 Hz  (linear interpolation)
-              ├── Convert: mono → stereo
-              └── Push to FreeRTOS ring buffer (64 KB)
+              ├── Apply volume, convert mono → stereo
+              └── Push to FreeRTOS ring buffer (32 KB)
                     └── A2DP data callback (BT stack task)
                           └── Drain ring buffer → send to BT speaker
 ```

@@ -779,7 +779,7 @@ if (CONFIG_USE_ESP_BLUFI_WIFI_PROVISIONING)
     list(APPEND SOURCES "boards/common/blufi.cpp")
 endif ()
 
-if (CONFIG_BT_A2DP_ENABLE)
+if (CONFIG_USE_BT_SPEAKER)
     list(APPEND SOURCES
         "audio/codecs/bt_audio_codec.cc"
         "boards/common/bt_speaker_mcp_tool.cc"
