@@ -173,6 +173,13 @@ _AUTO_SELECT_RULES: dict[str, list[str]] = {
         "CONFIG_BT_BLE_BLUFI_ENABLE=y",
         "CONFIG_MBEDTLS_DHM_C=y",
     ],
+    "CONFIG_USE_BT_SPEAKER": [
+        "CONFIG_BT_ENABLED=y",
+        "CONFIG_BT_BLUEDROID_ENABLED=y",
+        "CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=y",
+        "CONFIG_BT_CLASSIC_ENABLED=y",
+        "CONFIG_BT_A2DP_ENABLE=y",
+    ],
 }
 
 

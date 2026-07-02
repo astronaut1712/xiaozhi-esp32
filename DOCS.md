@@ -214,7 +214,7 @@ To change any of these at build time, either:
     "builds": [
       {
         "name": "my-board",
-        "sdkconfig": [
+        "sdkconfig_append": [
           "CONFIG_OTA_URL=\"https://my-server.com/ota/\"",
           "CONFIG_LANGUAGE_EN_US=y"
         ]
@@ -234,7 +234,7 @@ If you self-host, point `CONFIG_OTA_URL` at your own server. The API contract is
 
 **Partition scheme.** The default is V2 with a 16 MB flash assumption. If your board has 8 MB flash, set the correct partition table in the board's `config.json`:
 ```json
-"sdkconfig": ["CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/v2/8m.csv\""]
+"sdkconfig_append": ["CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/v2/8m.csv\""]
 ```
 Available tables: `partitions/v2/8m.csv`, `16m.csv`, `16m_c3.csv`, `32m.csv`.
 
@@ -322,17 +322,17 @@ python scripts/release.py bread-compact-wifi --name my-custom-build
 **Change language:**
 ```json
 // in boards/your-board/config.json
-"sdkconfig": ["CONFIG_LANGUAGE_EN_US=y"]
+"sdkconfig_append": ["CONFIG_LANGUAGE_EN_US=y"]
 ```
 
 **Change OTA server URL:**
 ```json
-"sdkconfig": ["CONFIG_OTA_URL=\"https://your-server.com/ota/\""]
+"sdkconfig_append": ["CONFIG_OTA_URL=\"https://your-server.com/ota/\""]
 ```
 
 **Use a custom asset bundle:**
 ```json
-"sdkconfig": [
+"sdkconfig_append": [
   "CONFIG_FLASH_CUSTOM_ASSETS=y",
   "CONFIG_CUSTOM_ASSETS_FILE=\"https://your-cdn.com/assets.bin\""
 ]
@@ -490,7 +490,7 @@ This feature is already implemented in the codebase:
 
 #### Step 1 — Enable Bluetooth in your board's config.json
 
-The feature is gated by the project option `CONFIG_USE_BT_SPEAKER` (menuconfig → Xiaozhi Assistant), which requires the Classic BT stack options:
+The feature is gated by the project option `CONFIG_USE_BT_SPEAKER` (menuconfig → Xiaozhi Assistant). `scripts/release.py` auto-adds the required Classic BT stack options (`CONFIG_BT_ENABLED`, `CONFIG_BT_CLASSIC_ENABLED`, `CONFIG_BT_A2DP_ENABLE`, ...) when it sees this flag, so the board variant only needs:
 
 ```json
 {
@@ -498,18 +498,15 @@ The feature is gated by the project option `CONFIG_USE_BT_SPEAKER` (menuconfig �
   "builds": [
     {
       "name": "my-board-bt",
-      "sdkconfig": [
-        "CONFIG_BT_ENABLED=y",
-        "CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=y",
-        "CONFIG_BT_CLASSIC_ENABLED=y",
-        "CONFIG_BT_A2DP_ENABLE=y",
-        "CONFIG_BT_SPP_ENABLED=n",
+      "sdkconfig_append": [
         "CONFIG_USE_BT_SPEAKER=y"
       ]
     }
   ]
 }
 ```
+
+A reference variant exists: `bread-compact-esp32-bt` in `main/boards/bread-compact-esp32/config.json` (also serves as CI compile coverage for the feature).
 
 > **Note:** `CONFIG_USE_BT_SPEAKER` releases BLE controller memory, so it cannot be combined with BluFi WiFi provisioning (`CONFIG_USE_ESP_BLUFI_WIFI_PROVISIONING`).
 
