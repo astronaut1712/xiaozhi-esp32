@@ -67,6 +67,8 @@ choice
         bool "Arabic"
     config LANGUAGE_HI_IN
         bool "Hindi"
+    config LANGUAGE_MR_IN
+        bool "Marathi"
     config LANGUAGE_PT_PT
         bool "Portuguese"
     config LANGUAGE_PL_PL
@@ -421,6 +423,9 @@ choice BOARD_TYPE
     config BOARD_TYPE_WAVESHARE_ESP32_C5_TOUCH_LCD_1_69
         bool "Waveshare ESP32-C5-Touch-LCD-1.69"
         depends on IDF_TARGET_ESP32C5
+    config BOARD_TYPE_WAVESHARE_ESP32_C6_EPAPER_1_54
+        bool "Waveshare ESP32-C6-e-Paper-1.54"
+        depends on IDF_TARGET_ESP32C6
     config BOARD_TYPE_WAVESHARE_ESP32_C6_LCD_0_85
         bool "Waveshare ESP32-C6-LCD-0.85"
         depends on IDF_TARGET_ESP32C6
